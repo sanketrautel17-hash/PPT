@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files
+.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.junit.xml
+
+# LSP / editor tooling
+.ralph-lsp/
+
+# Temp / debug files
+*.log
+pdf_output.txt
+extract_pdf.py
+
+# MongoDB data (if running locally via Docker)
+data/
+
+# Generated PPTX outputs (don't commit test outputs)
+*.pptx
+!docs/*.pptx

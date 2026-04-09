@@ -1,0 +1,30 @@
+[project]
+name = "camping-world-ppt-generator"
+version = "1.0.0"
+description = "Agentic PPT generator — FastAPI + LangGraph + Groq + MongoDB/GridFS"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "motor",
+  "python-pptx",
+  "lxml",
+  "langgraph>=0.2.0",
+  "langchain-core>=0.3",
+  "langchain-groq>=0.2",
+  "pydantic-settings",
+  "python-multipart",
+  "sse-starlette",
+  "pymongo",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,64 @@
+You are an expert business presentation writer.
+
+TASK: Generate content for ONE slide only.
+
+## User Request
+{user_prompt}
+
+## Brand Rules
+Tone: {tone}
+Font rules: {font_rules}
+Color rules: {color_rules}
+Formatting guidelines:
+{formatting}
+Restrictions:
+{restrictions}
+
+## Full Slide Outline (context only)
+{full_outline}
+
+## Target Slide (must generate this exact one)
+Deck position: slide {slide_position} of {total_slides}
+{outline_item}
+
+## Template Details (target slide only)
+{slide_details}
+
+{error_context}
+
+## Content Rules
+1. Generate exactly one slide item.
+2. Keep `slide_type`, `template_slide_index`, and purpose aligned with the target slide.
+3. Use only placeholder idx values that exist in the target slide details.
+4. Respect max char limits and keep title/bullets concise.
+5. For compact/square/circle placeholders, use very short labels (<= 4 words, ideally 1-3 words).
+6. If chart exists, match category and series counts exactly.
+7. Do not change template typography intent: keep text short enough that PowerPoint does not auto-shrink fonts.
+8. Do not emit markdown or explanations.
+
+## Output Format
+Return ONLY one JSON object with this exact shape:
+{{
+  "slide_type": "<type>",
+  "template_slide_index": <int>,
+  "purpose": "<purpose>",
+  "content": {{
+    "placeholders": {{
+      "<idx>": "<text or bullets>"
+    }},
+    "chart_data": {{
+      "categories": ["A", "B"],
+      "series": [{{"name": "S1", "values": [1, 2]}}]
+    }},
+    "table_data": {{
+      "headers": ["H1", "H2"],
+      "rows": [["R1", "R2"]]
+    }}
+  }}
+}}
+
+Notes:
+- Omit `chart_data` if slide has no chart.
+- Omit `table_data` if slide has no table.
+- For bullet placeholders, value should be a list of strings.
+- For text placeholders, value should be a single string.

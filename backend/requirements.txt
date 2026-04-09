@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+motor
+python-pptx
+lxml
+langgraph>=0.2.0
+langchain-core>=0.3
+langchain-groq>=0.2
+pydantic-settings
+python-multipart
+sse-starlette
+pymongo
+json-repair
+langchain-openai>=0.3
