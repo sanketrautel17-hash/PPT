@@ -182,14 +182,34 @@ def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> No
 
     # Build a per-paragraph template: (pPr_copy, run_copy) for each original paragraph.
     # This preserves per-level font sizes, indent markers, bullet chars, etc.
+    #
+    # Font size sourcing priority (highest to lowest):
+    #   1. Explicit a:r run cloned from the paragraph (has a:rPr with sz).
+    #   2. a:endParaRPr on the paragraph — synthesised into a run with that rPr.
+    #      PowerPoint often stores the "real" font size here when the placeholder
+    #      text was deleted from the template but the style is still on endParaRPr.
+    #   3. Bare run with no rPr (falls back to slide-master theme size).
     para_templates: list[tuple] = []
     for para in existing_paras:
         pPr = para.find(qn("a:pPr"))
         pPr_copy = deepcopy(pPr) if pPr is not None else None
+
         run_copy = None
+        # Priority 1: use an explicit a:r run if present.
         for r in para.findall(qn("a:r")):
             run_copy = deepcopy(r)
             break
+
+        # Priority 2: synthesise a run from a:endParaRPr so font size is kept.
+        if run_copy is None:
+            end_rPr = para.find(qn("a:endParaRPr"))
+            if end_rPr is not None:
+                run_copy = etree.Element(qn("a:r"))
+                # Convert endParaRPr → rPr by copying all attributes/children.
+                synth_rPr = deepcopy(end_rPr)
+                synth_rPr.tag = qn("a:rPr")
+                run_copy.insert(0, synth_rPr)
+
         para_templates.append((pPr_copy, run_copy))
 
     # Fallback when template had no paragraphs at all
