@@ -133,6 +133,11 @@ def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> No
     """
     Replace text in a TextFrame while preserving ALL run-level formatting.
     Handles both plain string and list-of-bullets.
+
+    Each new bullet paragraph is styled using the corresponding original template
+    paragraph at that position (pPr + first run), so per-level font sizes, indents,
+    and bullet markers are preserved exactly. If there are more new bullets than
+    original template paragraphs, the last template paragraph's style is reused.
     """
     from pptx.oxml.ns import qn
 
@@ -149,36 +154,40 @@ def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> No
     # Collect existing paragraph XML nodes
     existing_paras = txBody.findall(qn("a:p"))
 
-    # Extract a template run (a:r) from the first paragraph for format cloning
-    template_run_xml = None
-    if existing_paras:
-        for r in existing_paras[0].findall(qn("a:r")):
-            template_run_xml = deepcopy(r)
+    # Build a per-paragraph template: (pPr_copy, run_copy) for each original paragraph.
+    # This preserves per-level font sizes, indent markers, bullet chars, etc.
+    para_templates: list[tuple] = []
+    for para in existing_paras:
+        pPr = para.find(qn("a:pPr"))
+        pPr_copy = deepcopy(pPr) if pPr is not None else None
+        run_copy = None
+        for r in para.findall(qn("a:r")):
+            run_copy = deepcopy(r)
             break
+        para_templates.append((pPr_copy, run_copy))
 
-    # Extract first paragraph properties (spacing, indent, etc.)
-    first_pPr = None
-    if existing_paras:
-        pPr = existing_paras[0].find(qn("a:pPr"))
-        if pPr is not None:
-            first_pPr = deepcopy(pPr)
+    # Fallback when template had no paragraphs at all
+    if not para_templates:
+        para_templates = [(None, None)]
 
     # Remove ALL existing paragraph nodes from txBody
     for p in existing_paras:
         txBody.remove(p)
 
-    # Re-build paragraphs — one per bullet
+    # Re-build paragraphs — one per bullet, styled from the matching template paragraph.
     for i, bullet_text in enumerate(bullets):
+        # Cap at last available template paragraph so extra bullets inherit its style.
+        tmpl_idx = min(i, len(para_templates) - 1)
+        pPr_tmpl, run_tmpl = para_templates[tmpl_idx]
+
         new_p = etree.SubElement(txBody, qn("a:p"))
 
-        # Restore paragraph properties on first paragraph only
-        if i == 0 and first_pPr is not None:
-            new_p.insert(0, deepcopy(first_pPr))
+        if pPr_tmpl is not None:
+            new_p.insert(0, deepcopy(pPr_tmpl))
 
-        if template_run_xml is not None:
+        if run_tmpl is not None:
             # Clone the template run to preserve font/size/bold/color
-            run = deepcopy(template_run_xml)
-            # Clear all a:t nodes, then set one with the new text
+            run = deepcopy(run_tmpl)
             for t in run.findall(qn("a:t")):
                 run.remove(t)
             t_elem = etree.SubElement(run, qn("a:t"))
