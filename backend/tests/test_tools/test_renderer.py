@@ -231,7 +231,12 @@ async def test_render_pptx_writes_pseudo_textbox_placeholder():
 
 @pytest.mark.asyncio
 async def test_render_pptx_does_not_autofill_unmapped_textboxes():
-    """Renderer should only write mapped placeholders to avoid accidental overlap text."""
+    """
+    Renderer should clear filler/lorem text from unmapped textboxes — it must NOT
+    leave template placeholder text visible in the final slide.
+    (The plan only maps placeholder idx=0; the lorem-ipsum textbox is unmapped,
+    so the renderer must clear it rather than leaving the filler text.)
+    """
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     if slide.shapes.title:
@@ -261,8 +266,10 @@ async def test_render_pptx_does_not_autofill_unmapped_textboxes():
             if t:
                 texts.append(t)
 
+    # Filler text must have been cleared, not left in the output.
+    assert not any("lorem ipsum" in t.lower() for t in texts)
+    # Arbitrary purpose text must NOT be auto-injected into the unmapped box.
     assert "Revenue improved across key segments" not in texts
-    assert any("lorem ipsum" in t.lower() for t in texts)
 
 
 @pytest.mark.asyncio
@@ -383,4 +390,103 @@ async def test_render_pptx_wide_short_textbox_not_compacted():
                 texts.append(t)
 
     assert "Source: Internal Sales Data" in texts
+
+
+@pytest.mark.asyncio
+async def test_render_pptx_spAutoFit_replaced_with_normAutofit():
+    """After render, bodyPr must not contain spAutoFit (prevents shape-growing overlap)."""
+    from lxml import etree
+    from pptx.oxml.ns import qn
+
+    pptx_bytes = make_minimal_pptx(1)
+    plan = SlidePlan(slides=[
+        SlidePlanItem(
+            slide_type="title",
+            template_slide_index=0,
+            purpose="Autofit test",
+            content=SlideContent(placeholders={"0": "A" * 200, "1": ["Bullet"] * 5}),
+        )
+    ])
+    result_bytes, _ = await render_pptx(plan, "autofit", pptx_bytes)
+    out = Presentation(io.BytesIO(result_bytes))
+    for shp in out.slides[0].shapes:
+        if not shp.has_text_frame:
+            continue
+        txBody = shp.text_frame._txBody
+        bodyPr = txBody.find(qn("a:bodyPr"))
+        if bodyPr is None:
+            continue
+        assert bodyPr.find(qn("a:spAutoFit")) is None, (
+            f"Shape '{shp.name}' still has spAutoFit after render — shapes will overlap."
+        )
+
+
+@pytest.mark.asyncio
+async def test_render_pptx_per_paragraph_font_sizes_preserved():
+    """
+    When multiple bullet paragraphs exist in the template, each new bullet should
+    inherit the formatting of the corresponding original paragraph (not all from para[0]).
+    """
+    from lxml import etree
+    from pptx.oxml.ns import qn
+    from pptx.util import Emu, Inches, Pt, Emu
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    tb = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(3))
+    tf = tb.text_frame
+
+    # Build two paragraphs with distinct font sizes: 24pt and 14pt
+    txBody = tf._txBody
+    existing = txBody.findall(qn("a:p"))
+    for p in existing:
+        txBody.remove(p)
+
+    for size_pt, text in [(24, "Big bullet"), (14, "Small bullet")]:
+        p = etree.SubElement(txBody, qn("a:p"))
+        r = etree.SubElement(p, qn("a:r"))
+        rPr = etree.SubElement(r, qn("a:rPr"), attrib={"sz": str(size_pt * 100), "lang": "en-US"})
+        t = etree.SubElement(r, qn("a:t"))
+        t.text = text
+
+    # Find the textbox shape index
+    tb_idx = None
+    for i, shp in enumerate(slide.shapes):
+        if hasattr(shp, "text_frame") and shp.text_frame is not None:
+            if "Big bullet" in (shp.text_frame.text or ""):
+                tb_idx = i
+                break
+    assert tb_idx is not None
+    pseudo_key = str(10000 + tb_idx)
+
+    buf = io.BytesIO()
+    prs.save(buf)
+    pptx_bytes = buf.getvalue()
+
+    plan = SlidePlan(slides=[
+        SlidePlanItem(
+            slide_type="bullets",
+            template_slide_index=0,
+            purpose="Font size test",
+            content=SlideContent(placeholders={pseudo_key: ["First item", "Second item"]}),
+        )
+    ])
+
+    result_bytes, _ = await render_pptx(plan, "fontsize", pptx_bytes)
+    out = Presentation(io.BytesIO(result_bytes))
+
+    sizes = []
+    for shp in out.slides[0].shapes:
+        if not hasattr(shp, "text_frame") or shp.text_frame is None:
+            continue
+        for para in shp.text_frame._txBody.findall(qn("a:p")):
+            for r in para.findall(qn("a:r")):
+                rPr = r.find(qn("a:rPr"))
+                if rPr is not None and rPr.get("sz"):
+                    sizes.append(int(rPr.get("sz")))
+
+    # Both original sizes must appear (para[0]=2400, para[1]=1400)
+    assert 2400 in sizes, f"Expected 2400 (24pt) in sizes, got {sizes}"
+    assert 1400 in sizes, f"Expected 1400 (14pt) in sizes, got {sizes}"
 
