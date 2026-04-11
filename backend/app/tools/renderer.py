@@ -134,25 +134,27 @@ def _compact_label(value: str | list[str], shape) -> str:
 
 def _ensure_normAutofit(text_frame) -> None:
     """
-    Ensure the text body uses normAutofit (shrink text to fit fixed box) rather than
-    spAutoFit (resize shape to fit text).  spAutoFit causes the shape to grow beyond
-    its template bounds and overlap adjacent shapes.
+    Replace spAutoFit with normAutofit to prevent the shape from growing beyond its
+    template bounds (which causes adjacent shapes to overlap).
+
+    IMPORTANT: We only act when spAutoFit is explicitly present.  Shapes that have
+    no autofit element at all are left unchanged — adding normAutofit to them would
+    force unexpected font shrinkage and change designed text sizes.
     """
     from pptx.oxml.ns import qn
     txBody = text_frame._txBody
     bodyPr = txBody.find(qn("a:bodyPr"))
     if bodyPr is None:
         return
-    # Remove spAutoFit — it resizes the shape and causes overlap.
+    # Only act if spAutoFit is present — swap it for normAutofit.
     sp = bodyPr.find(qn("a:spAutoFit"))
     if sp is not None:
         bodyPr.remove(sp)
-    # If no autofit element exists, add normAutofit so text shrinks inside the box.
-    if (
-        bodyPr.find(qn("a:normAutofit")) is None
-        and bodyPr.find(qn("a:noAutofit")) is None
-    ):
-        etree.SubElement(bodyPr, qn("a:normAutofit"))
+        if (
+            bodyPr.find(qn("a:normAutofit")) is None
+            and bodyPr.find(qn("a:noAutofit")) is None
+        ):
+            etree.SubElement(bodyPr, qn("a:normAutofit"))
 
 
 def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> None:
@@ -200,14 +202,19 @@ def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> No
             run_copy = deepcopy(r)
             break
 
-        # Priority 2: synthesise a run from a:endParaRPr so font size is kept.
+        # Priority 2: synthesise a run from a:endParaRPr for bold/italic/color only.
+        # Do NOT copy sz — endParaRPr is a cursor marker and its sz often differs
+        # from the real per-level size defined in the lstStyle.  Omitting sz lets
+        # PowerPoint resolve the correct size via lstStyle → layout → master.
         if run_copy is None:
             end_rPr = para.find(qn("a:endParaRPr"))
             if end_rPr is not None:
                 run_copy = etree.Element(qn("a:r"))
-                # Convert endParaRPr → rPr by copying all attributes/children.
                 synth_rPr = deepcopy(end_rPr)
                 synth_rPr.tag = qn("a:rPr")
+                # Strip sz — let lstStyle control the font size.
+                if "sz" in synth_rPr.attrib:
+                    del synth_rPr.attrib["sz"]
                 run_copy.insert(0, synth_rPr)
 
         para_templates.append((pPr_copy, run_copy))
