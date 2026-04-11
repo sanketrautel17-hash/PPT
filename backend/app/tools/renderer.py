@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 TEXTBOX_PLACEHOLDER_OFFSET = 10000
 
+# Placeholder types that hold non-text content — never attempt text replacement on these.
+_NON_TEXT_PH_TYPES = {10, 13, 14, 15, 16, 19}  # PICTURE, TABLE, CHART, SMART_ART, MEDIA, SLIDE_IMAGE
+
 # Text to treat as placeholder boilerplate (cleaned if LLM leaves it)
 BOILERPLATE_PATTERNS = [
     "insert", "click to add", "click to edit", "type here",
@@ -127,6 +130,29 @@ def _compact_label(value: str | list[str], shape) -> str:
     if len(short) <= 14:
         return short
     return words[0][:10]
+
+
+def _ensure_normAutofit(text_frame) -> None:
+    """
+    Ensure the text body uses normAutofit (shrink text to fit fixed box) rather than
+    spAutoFit (resize shape to fit text).  spAutoFit causes the shape to grow beyond
+    its template bounds and overlap adjacent shapes.
+    """
+    from pptx.oxml.ns import qn
+    txBody = text_frame._txBody
+    bodyPr = txBody.find(qn("a:bodyPr"))
+    if bodyPr is None:
+        return
+    # Remove spAutoFit — it resizes the shape and causes overlap.
+    sp = bodyPr.find(qn("a:spAutoFit"))
+    if sp is not None:
+        bodyPr.remove(sp)
+    # If no autofit element exists, add normAutofit so text shrinks inside the box.
+    if (
+        bodyPr.find(qn("a:normAutofit")) is None
+        and bodyPr.find(qn("a:noAutofit")) is None
+    ):
+        etree.SubElement(bodyPr, qn("a:normAutofit"))
 
 
 def _replace_text_preserving_format(text_frame, new_text: str | list[str]) -> None:
@@ -253,6 +279,9 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
             # ── Placeholder text replacement ─────────────────────────────
             if shape.is_placeholder:
                 ph = shape.placeholder_format
+                # Skip non-text placeholder types (PICTURE, CHART, TABLE, MEDIA, etc.)
+                if ph.type and getattr(ph.type, 'real', None) in _NON_TEXT_PH_TYPES:
+                    continue
                 ph_key = str(ph.idx)
                 if ph_key in ph_content:
                     new_text = ph_content[ph_key]
@@ -261,6 +290,7 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                     preview = str(new_text[0] if isinstance(new_text, list) else new_text)
                     if new_text and not _is_boilerplate(preview):
                         _replace_text_preserving_format(shape.text_frame, new_text)
+                        _ensure_normAutofit(shape.text_frame)
                         logger.info(
                             f"[render] slide={slide_idx} ph_idx={ph_key} "
                             f"→ wrote: '{preview[:60]}'"
@@ -275,6 +305,7 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                     existing = shape.text_frame.text if shape.text_frame else ""
                     if _is_template_filler_text(existing):
                         _replace_text_preserving_format(shape.text_frame, "")
+                        _ensure_normAutofit(shape.text_frame)
                         logger.info(
                             f"[render] slide={slide_idx} ph_idx={ph_key} "
                             f"CLEARED filler: '{existing.strip()[:60]}'"
@@ -290,6 +321,7 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                     preview = str(new_text[0] if isinstance(new_text, list) else new_text)
                     if new_text and not _is_boilerplate(preview):
                         _replace_text_preserving_format(shape.text_frame, new_text)
+                        _ensure_normAutofit(shape.text_frame)
                         logger.info(
                             f"[render] slide={slide_idx} pseudo_idx={ph_key} "
                             f"→ wrote: '{preview[:60]}'"
@@ -304,6 +336,7 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                     existing = shape.text_frame.text if shape.text_frame else ""
                     if _is_template_filler_text(existing):
                         _replace_text_preserving_format(shape.text_frame, "")
+                        _ensure_normAutofit(shape.text_frame)
                         logger.info(
                             f"[render] slide={slide_idx} pseudo_idx={ph_key} "
                             f"CLEARED filler: '{existing.strip()[:60]}'"

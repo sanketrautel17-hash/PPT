@@ -127,11 +127,19 @@ def _sanitize_plan_data(plan_data: dict) -> dict:
 
 def _backfill_missing_text_placeholders(slide_plan: SlidePlan, profile: TemplateProfile) -> SlidePlan:
     """
-    Backfill only explicit empty placeholder keys from the LLM output.
-
-    We intentionally avoid creating brand-new placeholder entries, because that can
-    write fallback text into decorative or tightly constrained text boxes.
+    Two-pass backfill:
+    Pass 1 – fill explicit empty keys the LLM included but left blank.
+    Pass 2 – inject fallback for filler-text placeholder keys the LLM omitted entirely,
+             so template lorem/filler text never survives into the rendered output.
     """
+    _FILLER_HINTS = {
+        "lorem ipsum", "sed ut perspiciatis", "topic 1", "optional eyebrow",
+        "subheadline", "eiludusponderium", "bullet point text", "presentation subtitle",
+        "presenter name", "presentation title", "delete before use", "source: lorem ipsum",
+    }
+    _SKIP_TYPES = {"TITLE", "CENTER_TITLE", "DATE", "SLIDE_NUMBER", "FOOTER",
+                   "PICTURE", "CHART", "TABLE", "SMART_ART", "MEDIA", "OBJECT"}
+
     layout_by_index = {s.slide_index: s for s in profile.slides}
 
     for item in slide_plan.slides:
@@ -143,6 +151,7 @@ def _backfill_missing_text_placeholders(slide_plan: SlidePlan, profile: Template
         fill_counter = 0
         ph_map = {str(ph.idx): ph for ph in layout.placeholders}
 
+        # ── Pass 1: fill explicit empty keys ──────────────────────────────
         for key, val in list(item.content.placeholders.items()):
             ph = ph_map.get(str(key))
             if not ph:
@@ -159,17 +168,34 @@ def _backfill_missing_text_placeholders(slide_plan: SlidePlan, profile: Template
             if not is_empty:
                 continue
 
-            # Never force-fill title placeholders; let deterministic validation drive retries.
             if str(ph.type).upper() in {"TITLE", "CENTER_TITLE"}:
                 continue
-
-            # Avoid injecting long fallback into compact placeholders (circle callouts, eyebrow labels).
             if ph.max_chars_estimate <= 18:
                 continue
 
             fill_counter += 1
             fallback = purpose_text if fill_counter == 1 else f"{purpose_text} ({fill_counter})"
             item.content.placeholders[str(key)] = fallback
+
+        # ── Pass 2: inject fallback for filler-text keys totally absent from LLM output ──
+        for key, ph in ph_map.items():
+            if key in item.content.placeholders:
+                continue  # already handled
+            if str(ph.type).upper() in _SKIP_TYPES:
+                continue
+            if ph.max_chars_estimate <= 18:
+                continue
+            current_lower = (ph.current_text or "").strip().lower()
+            if not any(hint in current_lower for hint in _FILLER_HINTS):
+                continue
+            # This filler-text placeholder was omitted by the LLM — inject fallback.
+            fill_counter += 1
+            fallback = purpose_text if fill_counter == 1 else f"{purpose_text} ({fill_counter})"
+            item.content.placeholders[str(key)] = fallback
+            logger.debug(
+                f"[backfill] slide={item.template_slide_index} idx={key} "
+                f"injected fallback: '{fallback[:60]}'"
+            )
 
     return slide_plan
 
