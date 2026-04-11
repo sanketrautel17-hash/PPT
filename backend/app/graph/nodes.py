@@ -534,13 +534,22 @@ def _slide_details_for_single(profile: TemplateProfile, outline_item: dict) -> s
         f"Purpose: {outline_item.get('purpose', '')}",
     ]
 
+    _FILLER_HINTS = [
+        "lorem ipsum", "sed ut perspiciatis", "topic 1", "optional eyebrow",
+        "subheadline", "eiludusponderium", "bullet point text", "presentation subtitle",
+        "presenter name", "presentation title", "delete before use", "source: lorem ipsum",
+    ]
+
     for ph in layout.placeholders:
         font_pt = ph.text_style.font_size_pt if ph.text_style.font_size_pt > 0 else 0.0
         font_family = ph.text_style.font_family or "theme/default"
+        current_lower = (ph.current_text or "").strip().lower()
+        is_filler = any(hint in current_lower for hint in _FILLER_HINTS)
+        replace_label = "[MUST REPLACE WITH REAL CONTENT]" if is_filler else "current_text"
         lines.append(
             f"  Placeholder idx={ph.idx} ({ph.type} '{ph.name}'): "
             f"font={font_pt:.1f}pt, family={font_family}, "
-            f"max_chars={ph.max_chars_estimate}, REPLACE_THIS_TEXT='{ph.current_text[:40]}'"
+            f"max_chars={ph.max_chars_estimate}, {replace_label}='{ph.current_text[:40]}'"
         )
 
     for ch in layout.charts:

@@ -20,6 +20,29 @@ def _find_slide_layout(profile: TemplateProfile, slide_index: int) -> SlideLayou
     return None
 
 
+_FILLER_TEXT_PATTERNS = [
+    "lorem ipsum",
+    "sed ut perspiciatis",
+    "topic 1",
+    "optional eyebrow",
+    "subheadline",
+    "eiludusponderium",
+    "bullet point text",
+    "presentation subtitle",
+    "presenter name",
+    "presentation title",
+    "delete before use",
+    "source: lorem ipsum",
+]
+
+
+def _is_filler_text(text: str) -> bool:
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    return any(p in t for p in _FILLER_TEXT_PATTERNS)
+
+
 def _is_compact_placeholder(layout_ph) -> bool:
     """Identify compact placeholders (e.g. circular callouts / eyebrow labels)."""
     pos = layout_ph.position
@@ -174,13 +197,19 @@ def _validate_chart(item: SlidePlanItem, layout: SlideLayout) -> list[dict]:
 
 
 def _validate_required_fields(item: SlidePlanItem, layout: SlideLayout) -> list[dict]:
-    """Check that required TITLE placeholders are populated."""
+    """Check that required TITLE placeholders are populated, and that non-compact
+    body/text placeholders whose template text is filler are also replaced."""
     errors = []
 
     for ph in layout.placeholders:
+        val = item.content.placeholders.get(str(ph.idx))
+        is_empty = not val or (isinstance(val, str) and not val.strip()) or (
+            isinstance(val, list) and not any(str(v).strip() for v in val)
+        )
+
+        # Title placeholders are always required.
         if ph.type in ("TITLE", "CENTER_TITLE") and ph.max_chars_estimate > 0:
-            val = item.content.placeholders.get(str(ph.idx))
-            if not val or (isinstance(val, str) and not val.strip()):
+            if is_empty:
                 errors.append({
                     "slide_index": item.template_slide_index,
                     "field": f"placeholders.{ph.idx}",
@@ -189,6 +218,24 @@ def _validate_required_fields(item: SlidePlanItem, layout: SlideLayout) -> list[
                         f"is missing or empty. Please provide a title."
                     ),
                 })
+
+        # Non-compact text placeholders that contain template filler (lorem ipsum etc.) MUST be replaced.
+        elif (
+            ph.type not in {"DATE", "SLIDE_NUMBER", "FOOTER", "PICTURE", "CHART", "TABLE", "SMART_ART", "MEDIA", "OBJECT"}
+            and not _is_compact_placeholder(ph)
+            and _is_filler_text(ph.current_text)
+        ):
+            if is_empty:
+                errors.append({
+                    "slide_index": item.template_slide_index,
+                    "field": f"placeholders.{ph.idx}",
+                    "message": (
+                        f"Placeholder '{ph.name}' (type={ph.type}, idx={ph.idx}) contains template filler text "
+                        f"('{ph.current_text[:50]}...'). You MUST replace it with real content relevant to the slide "
+                        f"purpose. Do not omit this placeholder key from your JSON output."
+                    ),
+                })
+
     return errors
 
 
