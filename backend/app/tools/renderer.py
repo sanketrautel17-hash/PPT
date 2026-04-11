@@ -261,6 +261,15 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                             f"[render] slide={slide_idx} ph_idx={ph_key} "
                             f"SKIPPED (empty or boilerplate): '{preview[:60]}'"
                         )
+                else:
+                    # LLM didn't provide content — clear leftover template filler
+                    existing = shape.text_frame.text if shape.text_frame else ""
+                    if _is_template_filler_text(existing):
+                        _replace_text_preserving_format(shape.text_frame, "")
+                        logger.info(
+                            f"[render] slide={slide_idx} ph_idx={ph_key} "
+                            f"CLEARED filler: '{existing.strip()[:60]}'"
+                        )
 
             # ── Editable text-box replacement (pseudo-placeholder) ──────
             elif hasattr(shape, "text_frame") and shape.text_frame is not None:
@@ -280,6 +289,15 @@ def _render_slide(prs_slide, item: SlidePlanItem) -> None:
                         logger.warning(
                             f"[render] slide={slide_idx} pseudo_idx={ph_key} "
                             f"SKIPPED (empty or boilerplate): '{preview[:60]}'"
+                        )
+                else:
+                    # LLM didn't provide content — clear leftover template filler
+                    existing = shape.text_frame.text if shape.text_frame else ""
+                    if _is_template_filler_text(existing):
+                        _replace_text_preserving_format(shape.text_frame, "")
+                        logger.info(
+                            f"[render] slide={slide_idx} pseudo_idx={ph_key} "
+                            f"CLEARED filler: '{existing.strip()[:60]}'"
                         )
 
             # ── Chart data replacement ───────────────────────────────────

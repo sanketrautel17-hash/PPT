@@ -30,11 +30,12 @@ Deck position: slide {slide_position} of {total_slides}
 1. Generate exactly one slide item.
 2. Keep `slide_type`, `template_slide_index`, and purpose aligned with the target slide.
 3. Use only placeholder idx values that exist in the target slide details.
-4. Respect max char limits and keep title/bullets concise.
-5. For compact/square/circle placeholders, use very short labels (<= 4 words, ideally 1-3 words).
-6. If chart exists, match category and series counts exactly.
-7. Do not change template typography intent: keep text short enough that PowerPoint does not auto-shrink fonts.
-8. Do not emit markdown or explanations.
+4. You MUST include every text placeholder idx shown in the slide details (except PICTURE, CHART, and TABLE types). Do not omit any — leaving a placeholder out causes template filler text (lorem ipsum, "Topic 1", etc.) to remain visible in the exported slide.
+5. Respect max char limits and keep title/bullets concise.
+6. For compact/square/circle placeholders, use very short labels (<= 4 words, ideally 1-3 words).
+7. If chart exists, match category and series counts exactly.
+8. Do not change template typography intent: keep text short enough that PowerPoint does not auto-shrink fonts.
+9. Do not emit markdown or explanations.
 
 ## Output Format
 Return ONLY one JSON object with this exact shape:
