@@ -554,12 +554,14 @@ def _slide_details_for_single(profile: TemplateProfile, outline_item: dict) -> s
 
     for ch in layout.charts:
         lines.append(
-            f"  Chart: type={ch.chart_type}, series_count={ch.series_count}, "
+            f"  [MUST PROVIDE chart_data] Chart: type={ch.chart_type}, series_count={ch.series_count}, "
             f"category_count={ch.category_count}, categories={ch.categories}"
         )
 
     for tb in layout.tables:
-        lines.append(f"  Table: {tb.rows} rows x {tb.cols} cols, headers={tb.header_row}")
+        lines.append(
+            f"  [MUST PROVIDE table_data] Table: {tb.rows} rows x {tb.cols} cols, headers={tb.header_row}"
+        )
 
     return "\n".join(lines)
 

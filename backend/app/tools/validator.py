@@ -131,13 +131,48 @@ def _validate_char_limits(item: SlidePlanItem, layout: SlideLayout) -> list[dict
     return errors
 
 
-def _validate_chart(item: SlidePlanItem, layout: SlideLayout) -> list[dict]:
-    """Validate chart data matches template chart structure."""
+def _validate_table(item: SlidePlanItem, layout: SlideLayout) -> list[dict]:
+    """Require table_data when layout has a table."""
     errors = []
-    if not layout.charts or not item.content.chart_data:
+    if not layout.tables:
+        return errors
+    if not item.content.table_data:
+        t = layout.tables[0]
+        errors.append({
+            "slide_index": item.template_slide_index,
+            "field": "table_data",
+            "message": (
+                f"This slide has a table ({t.rows} rows x {t.cols} cols, headers={t.header_row}). "
+                f"You MUST include a \"table_data\" key with \"headers\" and \"rows\" arrays "
+                f"containing real, LLM-generated content. Do not omit table_data."
+            ),
+        })
+    return errors
+
+
+def _validate_chart(item: SlidePlanItem, layout: SlideLayout) -> list[dict]:
+    """Validate chart data matches template chart structure. Require chart_data when layout has a chart."""
+    errors = []
+    if not layout.charts:
         return errors
 
     template_chart = layout.charts[0]  # validate against first chart
+
+    # Error when LLM omitted chart_data entirely — template's placeholder data stays otherwise.
+    if not item.content.chart_data:
+        errors.append({
+            "slide_index": item.template_slide_index,
+            "field": "chart_data",
+            "message": (
+                f"This slide has a chart (type={template_chart.chart_type}, "
+                f"{template_chart.series_count} series, {template_chart.category_count} categories, "
+                f"categories={template_chart.categories}). "
+                f"You MUST include a \"chart_data\" key with \"categories\" and \"series\" arrays "
+                f"containing real, LLM-generated data values. Do not omit chart_data."
+            ),
+        })
+        return errors
+
     plan_chart = item.content.chart_data
 
     # Check series count
@@ -284,6 +319,7 @@ def validate_single_slide(item: SlidePlanItem, profile: TemplateProfile) -> dict
         errors.extend(_validate_required_fields(item, layout))
         errors.extend(_validate_char_limits(item, layout))
         errors.extend(_validate_chart(item, layout))
+        errors.extend(_validate_table(item, layout))
         warnings.extend(_validate_bullet_count(item))
 
     valid = len(errors) == 0

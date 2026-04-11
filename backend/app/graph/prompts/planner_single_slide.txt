@@ -59,7 +59,9 @@ Return ONLY one JSON object with this exact shape:
 }}
 
 Notes:
-- Omit `chart_data` if slide has no chart.
-- Omit `table_data` if slide has no table.
+- You MUST include `chart_data` (with `categories` and `series`) if the slide details show a [MUST PROVIDE chart_data] chart. Omitting it leaves the template's placeholder data unchanged.
+- You MUST include `table_data` (with `headers` and `rows`) if the slide details show a [MUST PROVIDE table_data] table. Omitting it leaves the template's placeholder data unchanged.
+- Omit `chart_data` only if the slide has NO chart.
+- Omit `table_data` only if the slide has NO table.
 - For bullet placeholders, value should be a list of strings.
 - For text placeholders, value should be a single string.
